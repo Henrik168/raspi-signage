@@ -162,7 +162,21 @@
                 currentTimeout = null;
             }
 
-            // Event-Handler entfernen
+            // Für beide Elemente: Transition temporär deaktivieren,
+            // opacity sofort auf 0 setzen, dann Transition wieder aktivieren
+            [img, vid].forEach(el => {
+                // Transition ausschalten
+                el.style.transition = "none";
+                el.classList.remove("visible");  // sofort opacity 0
+
+                // Reflow erzwingen, damit der Browser den Stilwechsel wirklich anwendet
+                void el.offsetWidth;
+
+                // Transition wieder einschalten (auf den CSS-Wert zurücksetzen)
+                el.style.transition = "";
+            });
+
+            // Event-Handler entfernen, bevor wir src ändern!
             img.onload = null;
             img.onerror = null;
 
@@ -170,8 +184,21 @@
             vid.oncanplay = null;
             vid.onerror = null;
 
-            // Wichtig: NICHT mehr src entfernen und NICHT mehr visible-Klasse löschen
-            // Der alte Frame bleibt stehen, bis das neue Medium ready ist.
+            // Medienquellen resetten
+            img.removeAttribute("src");
+
+            vid.pause();
+            vid.removeAttribute("src");
+            vid.removeAttribute("poster");
+            vid.load();
+
+            // // Video sauber stoppen und Quelle löschen
+            // vid.pause();
+            // vid.onended = null;
+            // vid.oncanplay = null;
+            // vid.removeAttribute("src");
+            // vid.removeAttribute("poster");
+            // vid.load();
 
         }
 
@@ -210,30 +237,32 @@
         function playImage(item) {
             const durationSecs = item.duration || 5;
 
-            // Video ausblenden und stoppen
-            vid.classList.remove("visible");
-            vid.pause();
-
             img.onload = () => {
                 console.log('img.onload', item.file_name);
                 fadeIn(img);
+                // nächster Wechsel nur, wenn das Bild wirklich geladen wurde
                 currentTimeout = setTimeout(nextItem, durationSecs * 1000);
             };
 
             img.onerror = (e) => {
                 console.error("Image failed to load:", item.file_name, e);
+                // Kein Timeout setzen – direkt zum nächsten
                 nextItem();
             };
 
             const imgUrl = "/media/" + item.file_name;
             console.log('playImage -> set src', imgUrl);
             img.src = imgUrl;
+
+            // build media URL using the central media route
+            // img.src = "/media/" + item.file_name;   // e.g. images/...
+            // fadeIn(img);
+
+            // const durationSecs = item.duration || 5;
+            // setTimeout(nextItem, durationSecs * 1000);
         }
 
         function playVideo(item) {
-            // Bild ausblenden
-            img.classList.remove("visible");
-
             vid.onerror = (e) => {
                 console.error("Video failed to load:", item.file_name, e);
                 nextItem();
@@ -251,6 +280,7 @@
                     fadeIn(vid);
                 }).catch(err => {
                     console.error("Autoplay failed", err);
+                    // Fallback: nach 10s weiter
                     currentTimeout = setTimeout(nextItem, 10000);
                 });
             };
@@ -264,6 +294,30 @@
             const vidUrl = "/media/" + item.file_name;
             console.log('playVideo -> set src', vidUrl);
             vid.src = vidUrl;
+
+
+            // vid.src = "/media/" + item.file_name;
+
+            // if (item.poster && item.poster !== "None") {
+            //     vid.poster = "/media/" + item.poster;
+            // } else {
+            //     vid.removeAttribute("poster");
+            // }
+
+            // vid.onended = () => {
+            //     nextItem();
+            // };
+
+            // vid.oncanplay = () => {
+            //     vid.play().then(() => {
+            //         // Poster nach Start entfernen, damit es am Ende nicht wieder auftaucht
+            //         vid.removeAttribute("poster");
+            //         fadeIn(vid);
+            //     }).catch(err => {
+            //         console.error("Autoplay failed", err);
+            //         setTimeout(nextItem, 10 * 1000);
+            //     });
+            // };
         }
 
         loadPlaylist();
