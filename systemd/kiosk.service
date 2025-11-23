@@ -1,0 +1,14 @@
+[Unit]
+Description=Chromium Kiosk
+Requires=signage.service
+After=signage.service
+
+[Service]
+User=pi
+Environment=XAUTHORITY=/home/pi/.Xauthority
+Environment=DISPLAY=:0
+ExecStart=/usr/bin/chromium-browser --kiosk --incognito http://localhost:8000
+Restart=always
+
+[Install]
+WantedBy=graphical.target

@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+
+{% block title %}Login — Signage{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:420px;margin:auto;">
+    <h2>Login</h2>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat,msg in messages %}
+    <div class="muted">{{ msg }}</div>
+    {% endfor %}
+    {% endwith %}
+    <form method="post" action="{{ url_for('auth.login') }}">
+        <input type="hidden" name="next" value="{{ next }}" />
+        <label>Benutzername<br><input name="username" required style="width:100%"></label>
+        <label>Passwort<br><input name="password" type="password" style="width:100%"></label>
+        <div style="margin-top:8px"><button type="submit">Anmelden</button></div>
+    </form>
+</div>
+{% endblock %}

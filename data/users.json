@@ -1,0 +1,7 @@
+[
+  {
+    "username": "uwm",
+    "password_hash": "scrypt:32768:8:1$slH1cZSbOP1JdyuH$529867dfcbf555c14d16b6a3b9ec841a7bf480de9c141c7152b50d70a197048441140d0dcd9440098f14e98ba8111d06288dbfa089f905e429ff30e018744abd",
+    "role": "admin"
+  }
+]

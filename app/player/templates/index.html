@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Signage Player</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            background: black;
+            overflow: hidden;
+            height: 100%;
+            width: 100%;
+        }
+
+        #container {
+            position: fixed;
+            inset: 0;
+            background: black;
+        }
+
+        .media {
+            position: absolute;
+            inset: 0;
+            margin: auto;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            opacity: 0;
+            transition: opacity 0.8s ease-in-out;
+        }
+
+        .visible {
+            opacity: 1;
+        }
+
+        video {
+            background: black;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container">
+        <img id="img" class="media" />
+        <video id="vid" class="media" muted playsinline></video>
+    </div>
+
+    <script>
+
+        let playlist = [];
+        let index = 0;
+        let currentTimeout = null;
+        let playlistReloadInterval = null;
+
+        const img = document.getElementById("img");
+        const vid = document.getElementById("vid");
+
+        console.log('player script loaded');
+
+        // Hilfsfunktion: Playlist vom Server laden (immer ohne Cache)
+        async function fetchPlaylistFromServer() {
+            console.log('fetchPlaylistFromServer: requesting /playlist.json');
+            const res = await fetch("/playlist.json?ts=" + Date.now(), {
+                cache: "no-store"
+            });
+            const data = await res.json();
+            console.log('fetchPlaylistFromServer: got', Array.isArray(data) ? data.length : typeof data);
+            return data;
+        }
+
+        async function loadPlaylist() {
+            try {
+                const data = await fetchPlaylistFromServer();
+                playlist = data || [];
+
+                if (playlist.length === 0) {
+                    console.warn("Empty playlist — will keep polling for changes");
+                    index = 0;
+                    // ensure we poll for changes frequently when empty
+                    if (playlistReloadInterval === null) {
+                        playlistReloadInterval = setInterval(reloadPlaylistPreserveIndex, 5000);
+                        // trigger an immediate check so we don't wait for the first interval
+                        setTimeout(reloadPlaylistPreserveIndex, 100);
+                    }
+                    return;
+                }
+
+                // we have items — start playing from the beginning
+                index = 0;
+                playCurrent();
+
+                // Ab jetzt regelmäßig die Playlist aktualisieren (z.B. alle 10 Sekunden)
+                if (playlistReloadInterval === null) {
+                    playlistReloadInterval = setInterval(reloadPlaylistPreserveIndex, 10000);
+                }
+            } catch (err) {
+                console.error("Initial playlist load failed", err);
+                // optional: nach ein paar Sekunden nochmal probieren
+                setTimeout(loadPlaylist, 5000);
+            }
+            // const res = await fetch("/playlist.json");
+            // playlist = await res.json();
+            // if (playlist.length === 0) {
+            //     console.error("Empty playlist");
+            //     return;
+            // }
+            // index = 0;
+            // playCurrent();
+        }
+
+        async function reloadPlaylistPreserveIndex() {
+            try {
+                const oldPlaylist = playlist;
+                const oldIndex = index;
+                const oldItem = oldPlaylist[oldIndex];
+
+                const newPlaylist = await fetchPlaylistFromServer();
+
+                if (!newPlaylist || newPlaylist.length === 0) {
+                    // new playlist still empty -> keep old (may be empty too)
+                    console.warn("Reloaded playlist is empty, keeping old one");
+                    return;
+                }
+
+                // Versuche, das aktuell laufende Medium wiederzufinden
+                let newIndex = 0;
+
+                if (oldItem) {
+                    const found = newPlaylist.findIndex(it =>
+                        it.file_name === oldItem.file_name &&
+                        it.media_type === oldItem.media_type
+                    );
+
+                    if (found !== -1) {
+                        newIndex = found; // gleiches Item in neuer Playlist gefunden
+                    } else if (oldIndex < newPlaylist.length) {
+                        newIndex = oldIndex; // sonst einfach den alten Index nehmen, falls gültig
+                    }
+                }
+
+                playlist = newPlaylist;
+                index = newIndex;
+
+                // If we were previously empty and now have items, start playback
+                if ((!oldPlaylist || oldPlaylist.length === 0) && playlist.length > 0) {
+                    console.log('Playlist was empty — starting playback');
+                    playCurrent();
+                }
+
+                console.log("Playlist reloaded, length =", playlist.length, "current index =", index);
+            } catch (err) {
+                console.error("Failed to reload playlist", err);
+            }
+        }
+
+        function clearMedia() {
+            // Timeout killen
+            if (currentTimeout !== null) {
+                clearTimeout(currentTimeout);
+                currentTimeout = null;
+            }
+
+            // Für beide Elemente: Transition temporär deaktivieren,
+            // opacity sofort auf 0 setzen, dann Transition wieder aktivieren
+            [img, vid].forEach(el => {
+                // Transition ausschalten
+                el.style.transition = "none";
+                el.classList.remove("visible");  // sofort opacity 0
+
+                // Reflow erzwingen, damit der Browser den Stilwechsel wirklich anwendet
+                void el.offsetWidth;
+
+                // Transition wieder einschalten (auf den CSS-Wert zurücksetzen)
+                el.style.transition = "";
+            });
+
+            // Event-Handler entfernen, bevor wir src ändern!
+            img.onload = null;
+            img.onerror = null;
+
+            vid.onended = null;
+            vid.oncanplay = null;
+            vid.onerror = null;
+
+            // Medienquellen resetten
+            img.removeAttribute("src");
+
+            vid.pause();
+            vid.removeAttribute("src");
+            vid.removeAttribute("poster");
+            vid.load();
+
+            // // Video sauber stoppen und Quelle löschen
+            // vid.pause();
+            // vid.onended = null;
+            // vid.oncanplay = null;
+            // vid.removeAttribute("src");
+            // vid.removeAttribute("poster");
+            // vid.load();
+
+        }
+
+        function fadeIn(el) {
+            requestAnimationFrame(() => {
+                el.classList.add("visible");
+            });
+        }
+
+        function playCurrent() {
+            clearMedia();
+
+            const item = playlist[index];
+            console.log("Playing", item);
+
+            if (item.media_type === "image") {
+                playImage(item);
+            } else if (item.media_type === "video") {
+                playVideo(item);
+            }
+        }
+
+        function nextItem() {
+            if (!playlist || playlist.length === 0) {
+                console.error("No items in playlist");
+                // kleine Pause und nochmal versuchen
+                setTimeout(nextItem, 5000);
+                return;
+            }
+
+            index = (index + 1) % playlist.length;
+            playCurrent();
+        }
+
+        function playImage(item) {
+            const durationSecs = item.duration || 5;
+
+            img.onload = () => {
+                fadeIn(img);
+                // nächster Wechsel nur, wenn das Bild wirklich geladen wurde
+                currentTimeout = setTimeout(nextItem, durationSecs * 1000);
+            };
+
+            img.onerror = (e) => {
+                console.error("Image failed to load:", item.file_name, e);
+                // Kein Timeout setzen – direkt zum nächsten
+                nextItem();
+            };
+
+            img.src = "/media/" + item.file_name;
+
+            // build media URL using the central media route
+            // img.src = "/media/" + item.file_name;   // e.g. images/...
+            // fadeIn(img);
+
+            // const durationSecs = item.duration || 5;
+            // setTimeout(nextItem, durationSecs * 1000);
+        }
+
+        function playVideo(item) {
+            vid.onerror = (e) => {
+                console.error("Video failed to load:", item.file_name, e);
+                nextItem();
+            };
+
+            vid.onended = () => {
+                nextItem();
+            };
+
+            vid.oncanplay = () => {
+                vid.play().then(() => {
+                    vid.removeAttribute("poster");
+                    fadeIn(vid);
+                }).catch(err => {
+                    console.error("Autoplay failed", err);
+                    // Fallback: nach 10s weiter
+                    currentTimeout = setTimeout(nextItem, 10000);
+                });
+            };
+
+            if (item.poster && item.poster !== "None") {
+                vid.poster = "/media/" + item.poster;
+            } else {
+                vid.removeAttribute("poster");
+            }
+
+            vid.src = "/media/" + item.file_name;
+
+
+            // vid.src = "/media/" + item.file_name;
+
+            // if (item.poster && item.poster !== "None") {
+            //     vid.poster = "/media/" + item.poster;
+            // } else {
+            //     vid.removeAttribute("poster");
+            // }
+
+            // vid.onended = () => {
+            //     nextItem();
+            // };
+
+            // vid.oncanplay = () => {
+            //     vid.play().then(() => {
+            //         // Poster nach Start entfernen, damit es am Ende nicht wieder auftaucht
+            //         vid.removeAttribute("poster");
+            //         fadeIn(vid);
+            //     }).catch(err => {
+            //         console.error("Autoplay failed", err);
+            //         setTimeout(nextItem, 10 * 1000);
+            //     });
+            // };
+        }
+
+        loadPlaylist();
+    </script>
+</body>
+
+</html>

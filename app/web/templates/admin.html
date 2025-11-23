@@ -1,0 +1,204 @@
+{% extends 'base.html' %}
+
+{% block title %}Playlist & Upload — Signage{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Medien hochladen</h2>
+    <form action="{{ url_for('admin.upload') }}" method="post" enctype="multipart/form-data">
+        <label for="file">Datei (Bilder: jpg/png/gif, Videos: mp4/mov/mkv)</label>
+        <input id="file" name="file" type="file" required />
+        <div style="margin-top:8px">
+            <button class="small" type="submit">Hochladen</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Playlist</h2>
+    {% if items %}
+    <ol id="playlist" class="playlist-list">
+        {% for item in items %}
+        <li class="card playlist-item" draggable="true" data-id="{{ item['uuid'] }}">
+            {% if item.media_type == 'image' %}
+            {# Build the media URL via url_for to avoid path mismatches #}
+            {% set rel = item.file_name.replace('media/', '') %}
+            <img class="thumb" src="{{ url_for('main.media', filename=rel) }}" alt="Bild {{ item.uuid }}" />
+            <div style="margin-top:6px"><a href="{{ url_for('main.media', filename=rel) }}" target="_blank">Bild
+                    öffnen</a>
+            </div>
+            {% else %}
+            {# Use poster if available; fall back to a generic preview or link to video #}
+            {% set poster = item.get('poster') or (item.file_name.replace('media/', '') if item.file_name else '') %}
+            {% if poster %}
+            <img class="thumb" src="{{ url_for('main.media', filename=poster) }}" alt="Video {{ item.uuid }}" />
+            <div style="margin-top:6px"><a
+                    href="{{ url_for('main.media', filename=(item.file_name.replace('media/', '') if item.file_name else '')) }}"
+                    target="_blank">Video öffnen</a>
+            </div>
+            {% else %}
+            <div
+                style="height:140px;display:flex;align-items:center;justify-content:center;background:#111;color:#fff;border-radius:6px;">
+                Video</div>
+            {% endif %}
+            {% endif %}
+            <div class="meta">ID: {{ item['uuid'] }} · Typ: {{ item['media_type'] }} · {% if item.get('duration')
+                %}Dauer: {{
+                item['duration'] }}s{% else %}—{% endif %}</div>
+            <div class="controls">
+                <form class="inline" action="{{ url_for('admin.toggle', item_id=item['uuid']) }}" method="post">
+                    <button type="submit" class="small" data-action="toggle">{{ 'Deaktivieren' if item.get('enabled',
+                        True) else 'Aktivieren'
+                        }}</button>
+                </form>
+                <span class="move-buttons" style="display:inline-flex;gap:6px;white-space:nowrap;align-items:center;">
+                    <form class="inline" action="{{ url_for('admin.move', item_id=item['uuid'], direction='up') }}"
+                        method="post" style="margin:0;padding:0;">
+                        <button class="small" data-action="move-up">▲</button>
+                    </form>
+                    <form class="inline" action="{{ url_for('admin.move', item_id=item['uuid'], direction='down') }}"
+                        method="post" style="margin:0;padding:0;">
+                        <button class="small" data-action="move-down">▼</button>
+                    </form>
+                </span>
+                {% if item['media_type'] == 'image' %}
+                <label style="display:inline-block;margin-left:8px">Dauer (s): <input type="number" min="1"
+                        class="small duration-input" data-id="{{ item['uuid'] }}"
+                        value="{{ item.get('duration') or '' }}" style="width:60px;" /></label>
+                {% endif %}
+                <button class="small secondary" data-id="{{ item['uuid'] }}" data-action="delete"
+                    onclick="deleteItem(this.dataset.id);return false;">Löschen</button>
+                <span class="muted" style="margin-left:8px">{{ 'aktiv' if item.get('enabled', True) else 'inaktiv'
+                    }}</span>
+            </div>
+        </li>
+        {% endfor %}
+    </ol>
+    {% else %}
+    <p class="muted">Keine Einträge in der Playlist.</p>
+    {% endif %}
+</div>
+
+<script>
+    // Drag & Drop for reordering
+    const playlist = document.getElementById('playlist');
+    if (playlist) {
+        let dragSrc = null;
+        playlist.addEventListener('dragstart', (e) => {
+            const el = e.target.closest('[draggable]');
+            if (!el) return;
+            dragSrc = el;
+            e.dataTransfer.setData('text/plain', el.dataset.id);
+            e.dataTransfer.effectAllowed = 'move';
+        });
+
+        playlist.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            const el = e.target.closest('[draggable]');
+            if (!el || el === dragSrc) return;
+            const rect = el.getBoundingClientRect();
+            const before = (e.clientY - rect.top) < (rect.height / 2);
+            playlist.insertBefore(dragSrc, before ? el : el.nextSibling);
+        });
+
+        playlist.addEventListener('drop', (e) => {
+            e.preventDefault();
+            // send new order
+            const ids = Array.from(playlist.querySelectorAll('[data-id]')).map(n => n.dataset.id);
+            fetch('{{ url_for("admin.reorder") }}', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: ids }) })
+                .then(r => r.json()).then(j => { if (!j.ok) console.error('reorder failed', j); })
+        });
+    }
+
+    // Move via arrow buttons is handled by forms that reload the page.
+
+    // Set duration (debounced)
+    let durationTimer = null;
+    document.querySelectorAll('.duration-input').forEach(inp => {
+        inp.addEventListener('input', (e) => {
+            clearTimeout(durationTimer);
+            const id = inp.dataset.id;
+            const val = inp.value;
+            durationTimer = setTimeout(() => {
+                fetch(`/set_duration/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ duration: val }) })
+                    .then(r => r.json()).then(j => { if (!j.ok) console.error('set_duration failed', j); });
+            }, 400);
+        });
+    });
+
+    // Delete item
+    function deleteItem(id) {
+        if (!confirm('Wirklich löschen?')) return;
+        fetch(`/delete/${id}`, { method: 'POST' }).then(r => r.json()).then(j => {
+            if (j.ok) {
+                const el = document.querySelector(`[data-id="${id}"]`);
+                if (el) {
+                    // determine next focus target: next element or previous
+                    const next = el.nextElementSibling || el.previousElementSibling;
+                    el.remove();
+                    if (next) {
+                        // try to focus first actionable button inside next
+                        const btn = next.querySelector('button[data-action]');
+                        if (btn) {
+                            btn.focus();
+                            btn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                        } else {
+                            next.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                        }
+                    }
+                }
+            } else {
+                alert('Löschen fehlgeschlagen');
+            }
+        });
+    }
+
+    // --- Focus persistence across reloads ---
+    const LS_KEY = 'signage_last_focused';
+
+    function saveLastFocus(itemId, action) {
+        try {
+            sessionStorage.setItem(LS_KEY, JSON.stringify({ id: itemId, action }));
+        } catch (e) {
+            /* ignore */
+        }
+    }
+
+    function restoreLastFocus() {
+        try {
+            const raw = sessionStorage.getItem(LS_KEY);
+            if (!raw) return;
+            const obj = JSON.parse(raw);
+            if (!obj || !obj.id) return;
+            const selector = `[data-id="${obj.id}"] button[data-action="${obj.action}"]`;
+            let target = document.querySelector(selector);
+            if (!target) {
+                // fallback: focus first button inside the item
+                const itemEl = document.querySelector(`[data-id="${obj.id}"]`);
+                if (itemEl) target = itemEl.querySelector('button[data-action]');
+            }
+            if (target) {
+                target.focus();
+                target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+        } catch (e) {
+            console.error('restore focus failed', e);
+        }
+    }
+
+    // attach click listeners to control buttons to save focus before form submission
+    document.querySelectorAll('.playlist-item').forEach(li => {
+        const id = li.dataset.id;
+        li.querySelectorAll('button[data-action]').forEach(btn => {
+            btn.addEventListener('click', (ev) => {
+                // save last focused before navigation/submission
+                saveLastFocus(id, btn.dataset.action || '');
+            }, { capture: true });
+        });
+    });
+
+    // restore focus after DOM ready
+    window.addEventListener('DOMContentLoaded', restoreLastFocus);
+</script>
+
+{% endblock %}
