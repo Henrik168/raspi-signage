@@ -15,7 +15,7 @@ log/
 
 # Media uploads
 media/
-data/playlists.json
+data/playlist.json
 
 
 # Scripts
