@@ -3,12 +3,12 @@ import threading
 import webbrowser
 import platform
 import subprocess
+import app.config
 from app.CustomLogger import getLogger
-from app.config import check_directories
+from app.config import USERS_FILE
 from app import create_app
 
 log = getLogger(level=20)  # type: ignore
-check_directories()
 
 
 def open_browser(port: int = 8000) -> None:
