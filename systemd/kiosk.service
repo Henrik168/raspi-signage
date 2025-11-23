@@ -7,8 +7,8 @@ After=signage.service
 User=pi
 Environment=XAUTHORITY=/home/pi/.Xauthority
 Environment=DISPLAY=:0
-ExecStart=/usr/bin/chromium-browser --kiosk --incognito http://localhost:8000
+ExecStart=/usr/bin/chromium --no-sandbox --kiosk --incognito http://localhost:8000
 Restart=always
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target

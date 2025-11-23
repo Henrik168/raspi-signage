@@ -1,11 +1,12 @@
 [Unit]
 Description=Signage Player
-After=graphical.target
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 User=pi
 WorkingDirectory=/home/pi/raspi-signage
-ExecStart=/usr/bin/python3 signage.py
+ExecStart=/home/pi/raspi-signage/.venv/bin/python signage.py
 Restart=always
 RestartSec=3
 

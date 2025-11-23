@@ -15,20 +15,9 @@ def open_browser(port: int = 8000) -> None:
     url = f"http://127.0.0.1:{port}"
     system = platform.system()
 
-    # Auf Linux → Raspberry Pi → Chromium im Kioskmodus
     if system == "Linux":
-        try:
-            subprocess.Popen([
-                "chromium-browser",
-                "--kiosk",
-                "--noerrdialogs",
-                "--disable-infobars",
-                "--incognito",
-                url,
-            ])
-        except FileNotFoundError:
-            # Fallback: normaler Browser
-            webbrowser.open(url)
+        # Wenn es der Raspi ist kein Webbrowser öffnen, sondern Chromium im Kioskmodus starten
+        pass
 
     # Auf macOS / Windows → normaler Standardbrowser
     else:

@@ -57,7 +57,7 @@ source .venv/bin/activate  # macOS/Linux
 pip install -r requirements.txt
 ```
 
-### 3. Starten
+### 3. Test Start
 
 **Entwicklung (mit Auto-Browser-Öffnung):**
 ```bash
@@ -150,40 +150,25 @@ Um das automatische Login-freie Verhalten zu deaktivieren, erstelle mindestens e
 
 1. Passe die Unit-Files in `systemd/` an (WorkingDirectory, User):
 
-```bash
-# Beispiel: signage-web.service
-[Service]
-WorkingDirectory=/home/pi/raspi-signage
-User=pi
-ExecStart=/home/pi/raspi-signage/.venv/bin/python /home/pi/raspi-signage/run_web.py
-```
 
 2. Installiere und aktiviere Services:
 
 ```bash
-sudo cp systemd/signage-web.service /etc/systemd/system/
+sudo cp systemd/signage.service /etc/systemd/system/
+sudo cp systemd/kiosk.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable signage-web.service
-sudo systemctl start signage-web.service
+sudo systemctl enable signage.service kiosk.service
+sudo systemctl start signage.service kiosk.service
+
 ```
 
 3. Status prüfen:
 
 ```bash
-sudo systemctl status signage-web.service
-journalctl -u signage-web.service -f  # Live-Logs
+sudo systemctl status signage.service
+journalctl -u signage.service -f  # Live-Logs
 ```
 
-### Kiosk-Mode (Auto-Start im Vollbild)
-
-Für automatisches Öffnen des Players im Vollbild-Browser beim Boot:
-
-```bash
-# Chromium im Kiosk-Mode starten
-chromium-browser --kiosk --noerrdialogs --disable-infobars --incognito http://localhost:8000/
-```
-
-Füge dies z.B. zu `~/.config/lxsession/LXDE-pi/autostart` oder erstelle einen systemd-Service.
 
 ## Entwicklung
 
